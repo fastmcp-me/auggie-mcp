@@ -1,3 +1,8 @@
+.venv/
+.cursor/
+augment_token.txt
+__pycache__/
+*.pyc
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -205,3 +210,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+node_modules/

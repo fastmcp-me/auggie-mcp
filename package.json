@@ -1,0 +1,28 @@
+{
+  "name": "auggie-mcp",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Auggie MCP server wrapper for npx",
+  "bin": {
+    "auggie-mcp": "bin/auggie-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "auggie_mcp_server.py",
+    "requirements.txt",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "author": "Sahar Mor <sahar@augment.co>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saharmor/auggie-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/saharmor/auggie-mcp/issues"
+  }
+}
+
