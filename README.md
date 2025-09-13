@@ -62,7 +62,7 @@ Use this MCP config in Cursor (global or per-project):
   "mcpServers": {
     "auggie-mcp": {
       "command": "npx",
-      "args": ["-y", "@saharmor/auggie-mcp"],
+      "args": ["-y", "auggie-mcp@latest"],
       "env": { "AUGMENT_API_TOKEN": "YOUR_TOKEN" }
     }
   }
@@ -77,6 +77,19 @@ This will:
 
 Node 18+ is required by the wrapper.
 
+#### Quick test via npx (terminal)
+
+```bash
+# Install deps into the package's local venv (no global installs)
+npx -y auggie-mcp --setup-only
+
+# Run the server (stdio). Useful for quick smoke-tests.
+npx -y auggie-mcp
+
+# Optional: start HTTP mode for manual debugging
+npx -y auggie-mcp -- --http
+```
+
 ### Claude Desktop (macOS)
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
@@ -85,15 +98,29 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
 {
   "mcpServers": {
     "auggie-mcp": {
-      "command": "python3",
-      "args": ["/Users/saharmor/Documents/codebase/auggie-mcp/auggie_mcp_server.py", "stdio"],
+      "command": "npx",
+      "args": ["-y", "auggie-mcp@latest"],
       "env": { "AUGMENT_API_TOKEN": "YOUR_TOKEN" }
     }
   }
 }
 ```
 
-Or start from `examples/claude_desktop_config.json`.
+Or, if you prefer Python directly, use:
+
+```json
+{
+  "mcpServers": {
+    "auggie-mcp": {
+      "command": "python3",
+      "args": ["/absolute/path/to/auggie_mcp_server.py", "stdio"],
+      "env": { "AUGMENT_API_TOKEN": "YOUR_TOKEN" }
+    }
+  }
+}
+```
+
+You can also start from `examples/claude_desktop_config.json`.
 
 ## Security and permissions
 
