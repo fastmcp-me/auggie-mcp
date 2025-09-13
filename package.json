@@ -1,6 +1,6 @@
 {
   "name": "auggie-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "Auggie MCP server wrapper for npx",
   "bin": {
@@ -25,4 +25,3 @@
     "url": "https://github.com/saharmor/auggie-mcp/issues"
   }
 }
-
