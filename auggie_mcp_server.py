@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -14,7 +15,8 @@ from mcp.server.session import ServerSession
 
 
 SERVER_NAME = "Auggie MCP"
-DEFAULT_TIMEOUT = 120
+DEFAULT_ASK_QUESTION_TIMEOUT = 240
+DEFAULT_IMPLEMENT_TIMEOUT = 600
 
 mcp = FastMCP(SERVER_NAME)
 
@@ -42,6 +44,68 @@ async def _run(cmd: List[str], cwd: Optional[str], timeout: int) -> tuple[int, s
     return proc.returncode, out.decode(errors="replace"), err.decode(errors="replace")
 
 
+async def _run_streaming(
+    cmd: List[str],
+    cwd: Optional[str],
+    timeout: int,
+    ctx: Context[ServerSession, None] | None,
+) -> tuple[int, str, str]:
+    """Run a subprocess and stream its stdout/stderr lines to the MCP client in real time.
+
+    Returns the exit code and full captured stdout/stderr for the caller to consume.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        cwd=cwd,
+        env=_env(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    captured_out_parts: List[str] = []
+    captured_err_parts: List[str] = []
+
+    async def _forward(stream: asyncio.StreamReader, sink: List[str], label: str) -> None:
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            text = line.decode(errors="replace")
+            sink.append(text)
+            # Forward to client as soon as we get a line
+            if ctx is not None:
+                # Do not add extra formatting; client will show these as progress logs
+                await ctx.info(text.rstrip("\n"))
+
+    # Launch readers
+    stdout_task = asyncio.create_task(_forward(proc.stdout, captured_out_parts, "stdout"))
+    stderr_task = asyncio.create_task(_forward(proc.stderr, captured_err_parts, "stderr"))
+
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        # Ensure reader tasks finish after kill
+        with contextlib.suppress(Exception):
+            await asyncio.gather(stdout_task, stderr_task)
+        raise
+
+    # Ensure readers complete
+    await asyncio.gather(stdout_task, stderr_task)
+
+    return proc.returncode, "".join(captured_out_parts), "".join(captured_err_parts)
+def _format_failure(cmd: List[str], code: int, out: str, err: str) -> str:
+    quoted = " ".join(shlex.quote(c) for c in cmd)
+    def _clip(s: str, n: int = 2000) -> str:
+        s = (s or "").strip()
+        return (s[:n] + "…") if len(s) > n else (s or "<empty>")
+    return (
+        f"Command failed (exit {code}): {quoted}\n"
+        f"STDERR:\n{_clip(err)}\n"
+        f"STDOUT:\n{_clip(out)}"
+    )
+
+
 def _auggie_base_args(
     instruction: str,
     workspace_root: Optional[str],
@@ -67,7 +131,8 @@ async def ask_question(
     workspace_root: Optional[str] = None,
     model: Optional[str] = None,
     rules_path: Optional[str] = None,
-    timeout_sec: int = DEFAULT_TIMEOUT,
+    timeout_sec: int = DEFAULT_ASK_QUESTION_TIMEOUT,
+    stream: bool = True,
     ctx: Context[ServerSession, None] | None = None,
 ) -> dict:
     """Q&A over a repository using Auggie's context engine."""
@@ -77,12 +142,20 @@ async def ask_question(
     except Exception as e:
         raise RuntimeError(f"Preflight failed: {e}")
     t0 = time.time()
-    cmd = _auggie_base_args(question, workspace_root, model, rules_path, quiet=True)
+    cmd = _auggie_base_args(question, workspace_root, model, rules_path, quiet=not stream)
     if ctx is not None:
         await ctx.info(f"Running: {' '.join(shlex.quote(c) for c in cmd)}")
-    code, out, err = await _run(cmd, cwd=workspace_root, timeout=timeout_sec)
+    try:
+        if stream:
+            code, out, err = await _run_streaming(cmd, cwd=workspace_root, timeout=timeout_sec, ctx=ctx)
+        else:
+            code, out, err = await _run(cmd, cwd=workspace_root, timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        raise RuntimeError(
+            f"Timed out after {timeout_sec}s running: {' '.join(shlex.quote(c) for c in cmd)}"
+        )
     if code != 0:
-        raise RuntimeError(f"Auggie failed: {err.strip() or out.strip()}")
+        raise RuntimeError(_format_failure(cmd, code, out, err))
     return {"answer": out.strip(), "usage": {"duration_ms": int((time.time() - t0) * 1000)}}
 
 
@@ -125,9 +198,10 @@ async def implement(
     commit_message: Optional[str] = None,
     scope: Optional[List[str]] = None,
     dry_run: bool = True,
-    timeout_sec: int = 300,
+    timeout_sec: int = DEFAULT_IMPLEMENT_TIMEOUT,
     model: Optional[str] = None,
     rules_path: Optional[str] = None,
+    stream: bool = True,
     ctx: Context[ServerSession, None] | None = None,
 ) -> ImplementResult:
     """Implement a change in the repo. Optionally commit."""
@@ -162,12 +236,20 @@ async def implement(
 
     instruction = f"{prompt.strip()}{scope_hint}"
 
-    cmd = _auggie_base_args(instruction, workspace_root, model, rules_path, quiet=True)
+    cmd = _auggie_base_args(instruction, workspace_root, model, rules_path, quiet=not stream)
     if ctx is not None:
         await ctx.info(f"Running: {' '.join(shlex.quote(c) for c in cmd)}")
-    code, out, err = await _run(cmd, cwd=workspace_root, timeout=timeout_sec)
+    try:
+        if stream:
+            code, out, err = await _run_streaming(cmd, cwd=workspace_root, timeout=timeout_sec, ctx=ctx)
+        else:
+            code, out, err = await _run(cmd, cwd=workspace_root, timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        raise RuntimeError(
+            f"Timed out after {timeout_sec}s running: {' '.join(shlex.quote(c) for c in cmd)}"
+        )
     if code != 0:
-        raise RuntimeError(f"Auggie failed: {err.strip() or out.strip()}")
+        raise RuntimeError(_format_failure(cmd, code, out, err))
 
     # Collect results
     files_changed: List[str] = []
@@ -210,8 +292,9 @@ async def _preflight() -> None:
         code, _, _ = await _run(["auggie", "--version"], cwd=None, timeout=5)
         assert code == 0
     except Exception as e:
-        print(f"[{SERVER_NAME}] Preflight failed: {e}", file=sys.stderr)
-        sys.exit(1)
+        # Surface the error to the MCP client rather than terminating the server,
+        # so users see a clear message in the UI.
+        raise RuntimeError(str(e))
 
 
 def _main() -> None:
