@@ -9,51 +9,61 @@ Minimal MCP server exposing Auggie CLI as tools for Q&A and code implementation.
 
 ## Requirements
 
-- Python 3.10+
 - Node.js 18+
-- Auggie CLI installed and on PATH
+- Python 3.10+ available on the system (used internally; no manual setup needed)
+- Auggie CLI installed (check by running `auggie --version`) - _see [installation guide](https://docs.augmentcode.com/cli/overview)_
 
-Install Python deps:
+## Authentication (AUGMENT_API_TOKEN)
 
-```bash
-pip install -r requirements.txt
-```
-
-## Run the server
-
-Stdio (for MCP clients):
+Retrieve your token via the Auggie CLI:
 
 ```bash
-python3 auggie_mcp_server.py stdio
+# Ensure Auggie CLI is installed and on PATH
+auggie --version
+
+# Sign in (opens browser flow)
+auggie login
+
+# Print your token
+auggie --print-augment-token
 ```
 
-HTTP (optional for debugging):
+Provide the token in either of these ways:
 
-```bash
-python3 auggie_mcp_server.py
-```
-
-## Configure Clients
-
-### Cursor
-
-Create `~/.cursor/mcp.json` or project `.cursor/mcp.json` with:
+- Cursor/Claude config (recommended): set it under `env` for the server
 
 ```json
 {
   "mcpServers": {
     "auggie-mcp": {
-      "command": "python3",
-      "args": ["/Users/saharmor/Documents/codebase/auggie-mcp/auggie_mcp_server.py", "stdio"],
+      "command": "npx",
+      "args": ["-y", "auggie-mcp@latest"],
       "env": { "AUGMENT_API_TOKEN": "YOUR_TOKEN" }
     }
   }
 }
 ```
 
-Or start from `examples/cursor.mcp.json`.
+- Shell environment (macOS/Linux)
 
-### Cursor via npx (recommended for users)
+One-off for a single command:
+
+```bash
+AUGMENT_API_TOKEN=YOUR_TOKEN npx -y auggie-mcp --setup-only
+```
+
+Persist for future shells (zsh):
+
+```bash
+echo 'export AUGMENT_API_TOKEN=YOUR_TOKEN' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Security tip: never commit tokens to source control. Prefer per-machine environment variables or your client's secure config store.
+
+## Configure Clients
+
+### Cursor via npx
 
 Use this MCP config in Cursor (global or per-project):
 
@@ -75,9 +85,8 @@ This will:
 - install `requirements.txt`, and
 - launch the Python server in `stdio` mode.
 
-Node 18+ is required by the wrapper.
 
-#### Quick test via npx (terminal)
+### Quick test via npx (terminal)
 
 ```bash
 # Install deps into the package's local venv (no global installs)
@@ -106,28 +115,8 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` and add:
 }
 ```
 
-Or, if you prefer Python directly, use:
-
-```json
-{
-  "mcpServers": {
-    "auggie-mcp": {
-      "command": "python3",
-      "args": ["/absolute/path/to/auggie_mcp_server.py", "stdio"],
-      "env": { "AUGMENT_API_TOKEN": "YOUR_TOKEN" }
-    }
-  }
-}
-```
-
-You can also start from `examples/claude_desktop_config.json`.
-
 ## Security and permissions
 
-- Default runs keep `implement` in dry-run mode by denying write/shell tools via Auggie settings.
-- To allow writes, call `implement` with `dry_run=false`. Optionally set `branch` and `commit_message`.
-
-## Notes
-
-- The server checks Auggie availability at tool invocation time.
-- `AUGMENT_API_TOKEN` is read from the environment if provided.
+- Default: `implement` runs in dry‑run mode. No files are written, no shell runs; you get a proposed diff.
+- Enable writes: set `dry_run: false`.
+- Recommendation: use a feature branch and review the diff before merging.
