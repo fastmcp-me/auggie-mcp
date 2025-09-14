@@ -1,6 +1,6 @@
 {
   "name": "auggie-mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": false,
   "description": "Auggie MCP server wrapper for npx",
   "bin": {
